@@ -4,51 +4,50 @@ import (
 	"context"
 	"time"
 
-	"github.com/rs/zerolog/log"
+	"github.com/bilal/switchify-agent/internal/communicator"
 	"github.com/bilal/switchify-agent/internal/config"
 	"github.com/bilal/switchify-agent/internal/decision"
 	"github.com/bilal/switchify-agent/internal/switcher"
-	import "github.com/bilal/switchify-agent/internal/communicator"
-
+	"github.com/rs/zerolog/log"
 )
 
 type Monitor struct {
-    cfg      *config.Config
-    pingMon  *PingMonitor
-    engine   *decision.DecisionEngine
-    switcher *switcher.Switcher
-	comm *communicator.Communicator
+	cfg      *config.Config
+	pingMon  *PingMonitor
+	engine   *decision.DecisionEngine
+	switcher *switcher.Switcher
+	comm     *communicator.Communicator
 }
 
 func New(cfg *config.Config, comm *communicator.Communicator) *Monitor {
-    engine := decision.NewEngine(decision.ThresholdConfig{
-        MaxLatencyMs:    cfg.Thresholds.MaxLatencyMs,
-        MaxPacketLoss:   cfg.Thresholds.MaxPacketLoss,
-        MaxJitterMs:     cfg.Thresholds.MaxJitterMs,
-        RecoveryLatency: cfg.Thresholds.RecoveryLatency,
-        RecoveryLoss:    cfg.Thresholds.RecoveryLoss,
-        RecoveryJitter:  cfg.Thresholds.RecoveryJitter,
-        Cooldown:        time.Duration(cfg.Thresholds.CooldownSeconds) * time.Second,
-    })
+	engine := decision.NewEngine(decision.ThresholdConfig{
+		MaxLatencyMs:    float64(cfg.Primary.ICMPThresholdMs),
+		MaxPacketLoss:   float64(cfg.Primary.PacketLossThresholdPct),
+		MaxJitterMs:     50,
+		RecoveryLatency: float64(cfg.Primary.ICMPThresholdMs * 70 / 100),
+		RecoveryLoss:    float64(cfg.Primary.PacketLossThresholdPct * 70 / 100),
+		RecoveryJitter:  30,
+		Cooldown:        15 * time.Second,
+	})
 
-    sw, err := switcher.NewSwitcher(cfg.ISP.PrimaryGateway, cfg.ISP.BackupGateway)
-    if err != nil {
-        panic("invalid gateway IPs in config: " + err.Error())
-    }
+	sw, err := switcher.NewSwitcher("10.0.2.2", "10.0.2.2")
+	if err != nil {
+		panic("invalid gateway IPs in config: " + err.Error())
+	}
 
-    return &Monitor{
-        cfg:      cfg,
-        pingMon:  NewPingMonitor(cfg.Agent.TargetHost, time.Duration(cfg.Agent.PingIntervalSeconds)*time.Second),
-        engine:   engine,
-        switcher: sw,
+	return &Monitor{
+		cfg:      cfg,
+		pingMon:  NewPingMonitor(cfg.Agent.TestHosts[0], time.Duration(cfg.Agent.IntervalSeconds)*time.Second),
+		engine:   engine,
+		switcher: sw,
 		comm:     comm,
-    }
+	}
 }
 
 func (m *Monitor) Run(ctx context.Context) {
 	log.Info().Msg("Monitor started")
 
-	ticker := time.NewTicker(time.Duration(m.cfg.Agent.PingIntervalSeconds) * time.Second)
+	ticker := time.NewTicker(time.Duration(m.cfg.Agent.IntervalSeconds) * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -62,19 +61,26 @@ func (m *Monitor) Run(ctx context.Context) {
 
 			metrics := m.pingMon.GetMetrics()
 			// create telemetry payload
-tp := communicator.Telemetry{
-    AgentName:  m.cfg.Agent.Name,
-    Timestamp:  time.Now(),
-    ISP:        "primary", // optionally detect which ISP you're testing
-    LatencyMs:  metrics.AvgLatencyMs,
-    PacketLoss: metrics.PacketLoss,
-    JitterMs:   metrics.JitterMs,
-}
+			mp := communicator.MetricsPayload{
+				Level:      "info",
+				IspState:   "PRIMARY_ACTIVE",
+				LatencyMs:  int(metrics.AvgLatencyMs),
+				PacketLoss: int(metrics.PacketLoss),
+				JitterMs:   int(metrics.JitterMs),
+				Time:       time.Now().UTC().Format(time.RFC3339),
+				Message:    "ping metrics collected",
+			}
+			m.comm.SendMetrics(mp)
+			// non-blocking enqueue
+			//SendMetrics(m MetricsPayload)
+			//SendLog(l LogPayload)
 
-// non-blocking enqueue
-m.comm.Send(tp)
-
-			state := m.engine.Evaluate(metrics)
+			snapshot := decision.HealthSnapShot{
+				AvgLatencyMs: metrics.AvgLatencyMs,
+				PacketLoss:   metrics.PacketLoss,
+				JitterMs:     metrics.JitterMs,
+			}
+			state := m.engine.Evaluate(snapshot)
 
 			log.Info().
 				Str("isp_state", string(state)).

@@ -13,31 +13,36 @@ type LoggingConfig struct {
 }
 
 type AgentConfig struct {
-    Name                string        `mapstructure:"name"`
-    IntervalSeconds     int           `mapstructure:"interval_seconds"`
-    MetricsWindowSec    int           `mapstructure:"metrics_window_seconds"`
-    BackendURL          string        `mapstructure:"backend_url"`
-    SendIntervalSeconds int           `mapstructure:"send_interval_seconds"`
-    TimeoutSeconds      int           `mapstructure:"timeout_seconds"`
-    BackendAuthTokenEnv string        `mapstructure:"backend_auth_token_env"` // e.g. SWITCHIFY_BACKEND_TOKEN
-    InsecureSkipVerify  bool          `mapstructure:"insecure_skip_verify"` 
-    MaxQueueSize        int           `mapstructure:"max_queue_size"` 
+	Name                string   `mapstructure:"name"`
+	IntervalSeconds     int      `mapstructure:"interval_seconds"`
+	MetricsWindowSec    int      `mapstructure:"metrics_window_seconds"`
+	BackendURL          string   `mapstructure:"backend_url"`
+	SendIntervalSeconds int      `mapstructure:"send_interval_seconds"`
+	TimeoutSeconds      int      `mapstructure:"timeout_seconds"`
+	BackendAuthTokenEnv string   `mapstructure:"backend_auth_token_env"` // e.g. SWITCHIFY_BACKEND_TOKEN
+	InsecureSkipVerify  bool     `mapstructure:"insecure_skip_verify"`
+	MaxQueueSize        int      `mapstructure:"max_queue_size"`
+	TestHosts           []string `mapstructure:"test_hosts"`
 }
 
 type ISPConfig struct {
-	Name                     string   `mapstructure:"name"`
-	Interface                string   `mapstructure:"interface"`
-	TestHosts                []string `mapstructure:"test_hosts"`
-	ICMPThresholdMs          int      `mapstructure:"icmp_threshold_ms"`
-	PacketLossThresholdPct   int      `mapstructure:"packet_loss_threshold_pct"`
-	FailCount                int      `mapstructure:"fail_count"`
+	Name                   string   `mapstructure:"name"`
+	Interface              string   `mapstructure:"interface"`
+	TestHosts              []string `mapstructure:"test_hosts"`
+	ICMPThresholdMs        int      `mapstructure:"icmp_threshold_ms"`
+	PacketLossThresholdPct int      `mapstructure:"packet_loss_threshold_pct"`
+	FailCount              int      `mapstructure:"fail_count"`
 }
 
+type KafkaConfig struct {
+	Brokers []string `yaml:"brokers`
+}
 type Config struct {
-	Agent   AgentConfig `mapstructure:"agent"`
-	Primary ISPConfig   `mapstructure:"primary_isp"`
-	Backup  ISPConfig   `mapstructure:"backup_isp"`
+	Agent   AgentConfig   `mapstructure:"agent"`
+	Primary ISPConfig     `mapstructure:"primary_isp"`
+	Backup  ISPConfig     `mapstructure:"backup_isp"`
 	Logging LoggingConfig `mapstructure:"logging"`
+	kafka   KafkaConfig   `yaml:"kafka"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -51,7 +56,7 @@ func LoadConfig(path string) (*Config, error) {
 	// Defaults
 	v.SetDefault("agent.interval_seconds", 30)
 	v.SetDefault("agent.timeout_seconds", 5)
-    v.SetDefault("agent.max_queue_size", 1000)
+	v.SetDefault("agent.max_queue_size", 1000)
 	v.SetDefault("agent.insecure_skip_verify", false)
 	v.SetDefault("agent.metrics_window_seconds", 60)
 	v.SetDefault("agent.send_interval_seconds", 30)

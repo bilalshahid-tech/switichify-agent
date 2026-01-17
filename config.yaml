@@ -1,13 +1,16 @@
 agent:
-  backend_url: "https://telemetry.example/api/v1/telemetry"
+  backend_url: "http://192.168.56.1:8080/api/v1/telemetry"
   backend_auth_token_env: "SWITCHIFY_BACKEND_TOKEN"
   send_interval_seconds: 10
   max_queue_size: 1000
   timeout_seconds: 5
+  test_hosts: 
+       - "8.8.8.8"
+       - "0.0.0.0"
 
 primary_isp:
   name: "primary"
-  interface: "eth0"
+  interface: "enp0s3"
   test_hosts:
     - "1.1.1.1"
     - "8.8.8.8"
@@ -17,7 +20,7 @@ primary_isp:
 
 backup_isp:
   name: "backup"
-  interface: "eth1"
+  interface: "disabled"
   test_hosts:
     - "1.0.0.1"
 
@@ -26,5 +29,9 @@ logging:
   format: "json"
 
 isp:
-  primaryRouteCmd: "ip route replace default via 192.168.10.1"
-  backupRouteCmd: "ip route replace default via 192.168.20.1"
+  primaryRouteCmd: "ip route replace default via 10.0.2.2 dev enp0s3"
+  backupRouteCmd: "echo 'No backup isp configured'"
+
+kafka:
+   brokers:
+          - localhost:9092

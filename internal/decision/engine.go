@@ -3,31 +3,33 @@ package decision
 import (
 	"sync"
 	"time"
-	"github.com/bilal/switchify-agent/internal/monitor"
 )
 
 type ISPState string
 
+type HealthSnapShot struct {
+	AvgLatencyMs float64
+	PacketLoss   float64
+	JitterMs     float64
+}
+
 const (
-	PrimaryActive   ISPState = "PRIMARY_ACTIVE"
-	BackupActive    ISPState = "BACKUP_ACTIVE"
-	FailingOver     ISPState = "FAILING_OVER"
-	FailingBack     ISPState = "FAILING_BACK"
+	PrimaryActive ISPState = "PRIMARY_ACTIVE"
+	BackupActive  ISPState = "BACKUP_ACTIVE"
+	FailingOver   ISPState = "FAILING_OVER"
+	FailingBack   ISPState = "FAILING_BACK"
 )
 
 type DecisionEngine struct {
-	mu sync.Mutex
-
-	state ISPState
-
+	mu             sync.Mutex
+	state          ISPState
 	lastSwitchTime time.Time
 	cooldown       time.Duration
 
 	// Thresholds
-	MaxLatencyMs float64
-	MaxPacketLoss float64
-	MaxJitterMs float64
-
+	MaxLatencyMs    float64
+	MaxPacketLoss   float64
+	MaxJitterMs     float64
 	RecoveryLatency float64
 	RecoveryLoss    float64
 	RecoveryJitter  float64
@@ -56,7 +58,7 @@ type ThresholdConfig struct {
 	Cooldown        time.Duration
 }
 
-func (e *DecisionEngine) Evaluate(metrics monitor.PingMetrics) ISPState {
+func (e *DecisionEngine) Evaluate(metrics HealthSnapShot) ISPState {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 

@@ -7,11 +7,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bilal/switchify-agent/internal/communicator"
 	"github.com/bilal/switchify-agent/internal/config"
+	"github.com/bilal/switchify-agent/internal/health"
 	"github.com/bilal/switchify-agent/internal/logger"
 	"github.com/bilal/switchify-agent/internal/monitor"
-	"github.com/bilal/switchify-agent/internal/communicator"
-	"github.com/bilal/switchify-agent/internal/health"
 
 	"github.com/rs/zerolog/log"
 )
@@ -58,7 +58,7 @@ func main() {
 	//------------------------------------------
 	// START MONITOR + DECISION ENGINE
 	//------------------------------------------
-	mon := monitor.NewWithCommunicator(cfg, comm, healthSrv)
+	mon := monitor.New(cfg, comm)
 	go mon.Run(ctx)
 
 	//------------------------------------------
@@ -74,7 +74,8 @@ func main() {
 	defer shutdownCancel()
 
 	log.Info().Msg("stopping monitor...")
-	mon.Shutdown(shutdownCtx)
+	cancel()
+	<-shutdownCtx.Done()
 
 	log.Info().Msg("stopping communicator...")
 	comm.Shutdown(shutdownCtx)
