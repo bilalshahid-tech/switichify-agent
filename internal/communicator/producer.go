@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/bilal/switchify-agent/internal/config"
 	"github.com/rs/zerolog/log"
@@ -27,6 +28,8 @@ func NewKafkaProducer(cfg *config.Config) (*KafkaProducer, error) {
 		Topic:        "switchify.metrics",
 		Balancer:     &kafka.LeastBytes{},
 		RequiredAcks: int(kafka.RequireOne),
+		Async:        true,
+		BatchTimeout: 500 * time.Millisecond,
 	})
 
 	logsWriter := kafka.NewWriter(kafka.WriterConfig{
@@ -34,6 +37,8 @@ func NewKafkaProducer(cfg *config.Config) (*KafkaProducer, error) {
 		Topic:        "switchify.logs",
 		Balancer:     &kafka.LeastBytes{},
 		RequiredAcks: int(kafka.RequireOne),
+		Async:        true,
+		BatchTimeout: 500 * time.Millisecond,
 	})
 
 	log.Info().Msg("kafka producer initialized")
