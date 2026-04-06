@@ -88,10 +88,6 @@ func (m *Monitor) Run(ctx context.Context) {
 				JitterMs:     metrics.JitterMs,
 			}
 			
-			currState := m.engine.Evaluate(decision.HealthSnapShot{AvgLatencyMs: 0}) // Dummy call to get current state without triggering
-			// To get real state, Evaluator might have changed, we should evaluate correctly
-			// Wait, the Decision Engine Evaluation might change state directly.
-			// Let's do a logic check first before calling it if we are already in Primary
 			if metrics.AvgLatencyMs > float64(m.cfg.Primary.ICMPThresholdMs) {
 				fmt.Printf("[WARN] High latency detected: %.0fms\n", metrics.AvgLatencyMs)
 			}
@@ -99,9 +95,6 @@ func (m *Monitor) Run(ctx context.Context) {
 				fmt.Printf("[WARN] High packet loss detected: %.0f%%\n", metrics.PacketLoss)
 			}
 
-			oldState := m.engine.Evaluate(decision.HealthSnapShot{AvgLatencyMs: -1}) // hack: Evaluate has state mutation, let's just use it
-			// Actually the evaluator prevents flap, so it will return current state if in cooldown. 
-			// I should just call Evaluate once.
 			state := m.engine.Evaluate(snapshot)
 
 			// Simple manual checks for logging before failover
