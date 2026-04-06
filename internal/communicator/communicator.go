@@ -3,8 +3,6 @@ package communicator
 import (
 	"context"
 	"sync"
-	"time"
-
 	"github.com/bilal/switchify-agent/internal/config"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"

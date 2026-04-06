@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"net"
 	"os/exec"
 	"strings"
 
