@@ -25,7 +25,7 @@ backup_isp:
     - "1.0.0.1"
 
 logging:
-  level: "info"
+  level: "debug"
   format: "json"
 
 isp:
@@ -34,4 +34,4 @@ isp:
 
 kafka:
    brokers:
-          - localhost:9092
+          - 10.0.2.2:9094

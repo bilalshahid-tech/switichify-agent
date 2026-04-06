@@ -37,7 +37,7 @@ func (pm *PingMonitor) RunOnce() {
 
 	pinger.Count = 5
 	pinger.Timeout = 5 * time.Second
-	pinger.SetPrivileged(true)
+	pinger.SetPrivileged(false)
 
 	var previousRTT time.Duration
 	var jitterTotal float64

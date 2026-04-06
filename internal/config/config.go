@@ -35,14 +35,14 @@ type ISPConfig struct {
 }
 
 type KafkaConfig struct {
-	Brokers []string `yaml:"brokers`
+	Brokers []string `yaml:"brokers"`
 }
 type Config struct {
 	Agent   AgentConfig   `mapstructure:"agent"`
 	Primary ISPConfig     `mapstructure:"primary_isp"`
 	Backup  ISPConfig     `mapstructure:"backup_isp"`
 	Logging LoggingConfig `mapstructure:"logging"`
-	kafka   KafkaConfig   `yaml:"kafka"`
+	Kafka   KafkaConfig   `yaml:"kafka"`
 }
 
 func LoadConfig(path string) (*Config, error) {

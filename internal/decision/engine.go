@@ -14,10 +14,10 @@ type HealthSnapShot struct {
 }
 
 const (
-	PrimaryActive ISPState = "PRIMARY_ACTIVE"
-	BackupActive  ISPState = "BACKUP_ACTIVE"
-	FailingOver   ISPState = "FAILING_OVER"
-	FailingBack   ISPState = "FAILING_BACK"
+	PrimaryActive   ISPState = "PRIMARY_ACTIVE"
+	BackupActive    ISPState = "BACKUP_ACTIVE"
+	PrimaryDegraded ISPState = "PRIMARY_DEGRADED"
+	FailingBack     ISPState = "FAILING_BACK"
 )
 
 type DecisionEngine struct {
@@ -76,9 +76,9 @@ func (e *DecisionEngine) Evaluate(metrics HealthSnapShot) ISPState {
 			metrics.PacketLoss > e.MaxPacketLoss ||
 			metrics.JitterMs > e.MaxJitterMs {
 
-			e.state = FailingOver
+			e.state = PrimaryDegraded
 			e.lastSwitchTime = now
-			return FailingOver
+			return PrimaryDegraded
 		}
 
 	case BackupActive:
@@ -91,7 +91,7 @@ func (e *DecisionEngine) Evaluate(metrics HealthSnapShot) ISPState {
 			return FailingBack
 		}
 
-	case FailingOver:
+	case PrimaryDegraded:
 		e.state = BackupActive
 		return BackupActive
 

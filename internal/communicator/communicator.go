@@ -1,16 +1,7 @@
 package communicator
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"math"
-	"math/rand"
-	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -157,7 +148,9 @@ func (c *Communicator) metricsLoop() {
 		     return
 
 		case m:=<-c.metricsQueue:
-			_=c.producer.PublishMetric(c.ctx,m)
+			if err := c.producer.PublishMetric(c.ctx,m); err != nil {
+				log.Error().Err(err).Msg("failed to publish metric to kafka")
+			}
 	}
 }
 }
@@ -170,119 +163,11 @@ func (c *Communicator) logsLoop() {
 	        return
 
 		case l:=<-c.logsQueue:
-			_=c.producer.PublishLog(c.ctx, l)
-		}
-	}
-}
-
-func runLoop[T any](
-	ctx context.Context,
-	wg *sync.WaitGroup,
-	queue chan T,
-	url string,
-	sendInterval time.Duration,
-	flush func(string, []T),
-) {
-	defer wg.Done()
-	ticker := time.NewTicker(sendInterval)
-	defer ticker.Stop()
-
-	buffer := make([]T, 0, maxBatchSize)
-
-	for {
-		select {
-		case <-ctx.Done():
-			for {
-				select {
-				case item := <-queue:
-					buffer = append(buffer, item)
-				default:
-					if len(buffer) > 0 {
-						flush(url, buffer)
-					}
-					return
-				}
-			}
-
-		case item := <-queue:
-			buffer = append(buffer, item)
-			if len(buffer) >= maxBatchSize {
-				flush(url, buffer)
-				buffer = buffer[:0]
-			}
-
-		case <-ticker.C:
-			if len(buffer) > 0 {
-				flush(url, buffer)
-				buffer = buffer[:0]
+			if err := c.producer.PublishLog(c.ctx, l); err != nil {
+				log.Error().Err(err).Msg("failed to publish log to kafka")
 			}
 		}
 	}
 }
 
-// ---------- Sender ----------
 
-func (c *Communicator) flushWithRetry(url string, items any) {
-	payload, err := json.Marshal(items)
-	if err != nil {
-		log.Error().Err(err).Msg("marshal failed")
-		return
-	}
-
-	const maxAttempts = 6
-	baseDelay := 500 * time.Millisecond
-
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		req, err := http.NewRequestWithContext(
-			c.ctx,
-			http.MethodPost,
-			url,
-			bytes.NewReader(payload),
-		)
-		if err != nil {
-			log.Error().Err(err).Msg("request creation failed")
-			return
-		}
-
-		req.Header.Set("Content-Type", "application/json")
-		if c.token != "" {
-			req.Header.Set("Authorization", "Bearer "+c.token)
-		}
-
-		resp, err := c.client.Do(req)
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				log.Info().
-					Int("count", len(payload)).
-					Str("endpoint", url).
-					Msg("telemetry posted")
-				return
-			}
-			err = errors.New(fmt.Sprintf("bad status: %d", resp.StatusCode))
-		}
-
-		log.Warn().
-			Err(err).
-			Int("attempt", attempt).
-			Str("endpoint", url).
-			Msg("telemetry post failed, retrying")
-
-		if attempt == maxAttempts {
-			log.Error().
-				Int("attempts", attempt).
-				Str("endpoint", url).
-				Msg("max attempts reached, dropping batch")
-			return
-		}
-
-		backoff := time.Duration(math.Pow(2, float64(attempt-1))) * baseDelay
-		jitter := time.Duration(rand.Int63n(int64(baseDelay)))
-
-		select {
-		case <-time.After(backoff + jitter):
-		case <-c.ctx.Done():
-			return
-		}
-	}
-}

@@ -28,7 +28,7 @@ func NewKafkaProducer(cfg *config.Config) (*KafkaProducer, error) {
 		Topic:        "switchify.metrics",
 		Balancer:     &kafka.LeastBytes{},
 		RequiredAcks: int(kafka.RequireOne),
-		Async:        true,
+		Async:        false,
 		BatchTimeout: 500 * time.Millisecond,
 	})
 
@@ -37,7 +37,7 @@ func NewKafkaProducer(cfg *config.Config) (*KafkaProducer, error) {
 		Topic:        "switchify.logs",
 		Balancer:     &kafka.LeastBytes{},
 		RequiredAcks: int(kafka.RequireOne),
-		Async:        true,
+		Async:        false,
 		BatchTimeout: 500 * time.Millisecond,
 	})
 
@@ -56,6 +56,8 @@ func (p *KafkaProducer) PublishMetric(ctx context.Context, m MetricsPayload) err
 		return err
 	}
 
+	log.Debug().Str("correlation_id", m.CorrelationID).Msg("publishing metric payload to kafka...")
+
 	return p.metricsWriter.WriteMessages(ctx, kafka.Message{
 		Key:   []byte(m.CorrelationID),
 		Value: data,
@@ -68,6 +70,8 @@ func (p *KafkaProducer) PublishLog(ctx context.Context, l LogPayload) error {
 	if err != nil {
 		return err
 	}
+
+	log.Debug().Str("correlation_id", l.CorrelationID).Msg("publishing log payload to kafka...")
 
 	return p.logsWriter.WriteMessages(ctx, kafka.Message{
 		Key:   []byte(l.CorrelationID),

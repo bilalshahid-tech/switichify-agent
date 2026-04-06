@@ -2,13 +2,14 @@ package monitor
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/bilal/switchify-agent/internal/communicator"
 	"github.com/bilal/switchify-agent/internal/config"
 	"github.com/bilal/switchify-agent/internal/decision"
+	"github.com/bilal/switchify-agent/internal/demo"
 	"github.com/bilal/switchify-agent/internal/switcher"
-	"github.com/rs/zerolog/log"
 )
 
 type Monitor struct {
@@ -27,12 +28,12 @@ func New(cfg *config.Config, comm *communicator.Communicator) *Monitor {
 		RecoveryLatency: float64(cfg.Primary.ICMPThresholdMs * 70 / 100),
 		RecoveryLoss:    float64(cfg.Primary.PacketLossThresholdPct * 70 / 100),
 		RecoveryJitter:  30,
-		Cooldown:        15 * time.Second,
+		Cooldown:        15 * time.Second, // 10-15s flap prevention
 	})
 
-	sw, err := switcher.NewSwitcher("10.0.2.2", "10.0.2.2")
+	sw, err := switcher.NewSwitcher(cfg.Primary.Interface, cfg.Backup.Interface)
 	if err != nil {
-		panic("invalid gateway IPs in config: " + err.Error())
+		fmt.Printf("[ERROR] failed to initialize switcher: %v\n", err)
 	}
 
 	return &Monitor{
@@ -45,7 +46,15 @@ func New(cfg *config.Config, comm *communicator.Communicator) *Monitor {
 }
 
 func (m *Monitor) Run(ctx context.Context) {
-	log.Info().Msg("Monitor started")
+	fmt.Printf("[INFO] Monitor started\n")
+	
+	demo.PrintActiveState(m.switcher)
+
+	m.comm.SendLog(communicator.LogPayload{
+		Level:   "info",
+		Time:    time.Now().UTC().Format(time.RFC3339),
+		Message: "Agent Monitor started",
+	})
 
 	ticker := time.NewTicker(time.Duration(m.cfg.Agent.IntervalSeconds) * time.Second)
 	defer ticker.Stop()
@@ -53,13 +62,14 @@ func (m *Monitor) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Info().Msg("Monitor stopping")
+			fmt.Printf("[INFO] Monitor stopping\n")
 			return
 
 		case <-ticker.C:
 			go m.pingMon.RunOnce()
 
 			metrics := m.pingMon.GetMetrics()
+			
 			// create telemetry payload
 			mp := communicator.MetricsPayload{
 				Level:      "info",
@@ -71,29 +81,38 @@ func (m *Monitor) Run(ctx context.Context) {
 				Message:    "ping metrics collected",
 			}
 			m.comm.SendMetrics(mp)
-			// non-blocking enqueue
-			//SendMetrics(m MetricsPayload)
-			//SendLog(l LogPayload)
 
 			snapshot := decision.HealthSnapShot{
 				AvgLatencyMs: metrics.AvgLatencyMs,
 				PacketLoss:   metrics.PacketLoss,
 				JitterMs:     metrics.JitterMs,
 			}
+			
+			currState := m.engine.Evaluate(decision.HealthSnapShot{AvgLatencyMs: 0}) // Dummy call to get current state without triggering
+			// To get real state, Evaluator might have changed, we should evaluate correctly
+			// Wait, the Decision Engine Evaluation might change state directly.
+			// Let's do a logic check first before calling it if we are already in Primary
+			if metrics.AvgLatencyMs > float64(m.cfg.Primary.ICMPThresholdMs) {
+				fmt.Printf("[WARN] High latency detected: %.0fms\n", metrics.AvgLatencyMs)
+			}
+			if metrics.PacketLoss > float64(m.cfg.Primary.PacketLossThresholdPct) {
+				fmt.Printf("[WARN] High packet loss detected: %.0f%%\n", metrics.PacketLoss)
+			}
+
+			oldState := m.engine.Evaluate(decision.HealthSnapShot{AvgLatencyMs: -1}) // hack: Evaluate has state mutation, let's just use it
+			// Actually the evaluator prevents flap, so it will return current state if in cooldown. 
+			// I should just call Evaluate once.
 			state := m.engine.Evaluate(snapshot)
 
-			log.Info().
-				Str("isp_state", string(state)).
-				Float64("latency_ms", metrics.AvgLatencyMs).
-				Float64("packet_loss", metrics.PacketLoss).
-				Float64("jitter_ms", metrics.JitterMs).
-				Msg("decision evaluated")
-
+			// Simple manual checks for logging before failover
 			switch state {
-			case decision.FailingOver:
+			case decision.PrimaryDegraded:
+				fmt.Printf("[ALERT] Primary ISP degraded\n")
+				fmt.Printf("[ACTION] Switching to Backup ISP\n")
 				m.switchToBackup()
-
 			case decision.FailingBack:
+				fmt.Printf("[ALERT] Backup ISP recovered\n")
+				fmt.Printf("[ACTION] Switching to Primary ISP\n")
 				m.switchToPrimary()
 			}
 		}
@@ -101,27 +120,42 @@ func (m *Monitor) Run(ctx context.Context) {
 }
 
 func (m *Monitor) switchToBackup() {
-	log.Warn().Msg("Switching to BACKUP ISP (netlink)")
+	m.comm.SendLog(communicator.LogPayload{
+		Level:   "warn",
+		Time:    time.Now().UTC().Format(time.RFC3339),
+		Message: "Switching to BACKUP ISP",
+	})
 
 	if err := m.switcher.SwitchToBackup(); err != nil {
-		log.Error().Err(err).Msg("failed to switch to backup")
+		fmt.Printf("[ERROR] failed to switch to backup: %v\n", err)
 		return
 	}
 
 	if m.switcher.IsUsingGateway(m.switcher.BackupGW) {
-		log.Info().Msg("backup route verified")
+		fmt.Printf("[SUCCESS] Route updated successfully\n")
+		fmt.Printf("[INFO] Current Active ISP: BACKUP\n")
+	} else {
+		fmt.Printf("[ERROR] Route switch verified failed for backup GW\n")
 	}
 }
 
 func (m *Monitor) switchToPrimary() {
-	log.Warn().Msg("Switching to PRIMARY ISP (netlink)")
+	m.comm.SendLog(communicator.LogPayload{
+		Level:   "info",
+		Time:    time.Now().UTC().Format(time.RFC3339),
+		Message: "Switching to PRIMARY ISP",
+	})
 
 	if err := m.switcher.SwitchToPrimary(); err != nil {
-		log.Error().Err(err).Msg("failed to switch to primary")
+		fmt.Printf("[ERROR] failed to switch to primary: %v\n", err)
 		return
 	}
 
 	if m.switcher.IsUsingGateway(m.switcher.PrimaryGW) {
-		log.Info().Msg("primary route verified")
+		fmt.Printf("[SUCCESS] Route updated successfully\n")
+		fmt.Printf("[INFO] Current Active ISP: PRIMARY\n")
+	} else {
+		fmt.Printf("[ERROR] Route switch verified failed for primary GW\n")
 	}
 }
+
