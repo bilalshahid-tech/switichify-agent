@@ -1,7 +1,9 @@
 package monitor
 
 import (
+	"fmt"
 	"log"
+	"net"
 	"sync"
 	"time"
 
@@ -15,17 +17,38 @@ type PingMetrics struct {
 }
 
 type PingMonitor struct {
-	host     string
-	mutex    sync.RWMutex
-	metrics  PingMetrics
-	interval time.Duration
+	host      string
+	ifaceName string
+	mutex     sync.RWMutex
+	metrics   PingMetrics
+	interval  time.Duration
 }
 
-func NewPingMonitor(host string, interval time.Duration) *PingMonitor {
+func NewPingMonitor(host, iface string, interval time.Duration) *PingMonitor {
 	return &PingMonitor{
-		host:     host,
-		interval: interval,
+		host:      host,
+		ifaceName: iface,
+		interval:  interval,
 	}
+}
+
+func getInterfaceIP(ifaceName string) (string, error) {
+	iface, err := net.InterfaceByName(ifaceName)
+	if err != nil {
+		return "", err
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return "", err
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String(), nil
+			}
+		}
+	}
+	return "", fmt.Errorf("no IPv4 address found for %s", ifaceName)
 }
 
 func (pm *PingMonitor) RunOnce() {
@@ -35,9 +58,18 @@ func (pm *PingMonitor) RunOnce() {
 		return
 	}
 
+	// Interface Binding: Resolves to IP on interface and binds ping packet source to bypass default routing
+	if pm.ifaceName != "" {
+		if ip, err := getInterfaceIP(pm.ifaceName); err == nil {
+			pinger.Source = ip
+		} else {
+			log.Printf("Ping warning: failed to bind to interface %s: %v", pm.ifaceName, err)
+		}
+	}
+
 	pinger.Count = 5
 	pinger.Timeout = 5 * time.Second
-	pinger.SetPrivileged(false)
+	pinger.SetPrivileged(true) // Ensure sudo capabilities are fully utilized for direct socket access
 
 	var previousRTT time.Duration
 	var jitterTotal float64
