@@ -10,7 +10,7 @@ agent:
 
 primary_isp:
   name: "primary"
-  interface: "enp0s3"
+  interface: "enxfeb7f4ce3f04"
   test_hosts:
     - "1.1.1.1"
     - "8.8.8.8"
@@ -20,9 +20,10 @@ primary_isp:
 
 backup_isp:
   name: "backup"
-  interface: "disabled"
+  interface: "enx664a11be0277"
   test_hosts:
     - "1.0.0.1"
+    - "8.8.8.8"
 
 logging:
   level: "debug"
