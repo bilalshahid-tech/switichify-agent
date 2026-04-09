@@ -112,6 +112,12 @@ func autoDetectInterfaces(primary, backup *string) {
 }
 
 func (s *Switcher) SwitchToBackup() error {
+	if s.BackupGW == "" {
+		gw, err := detectGatewayRobust(s.BackupInterface)
+		if err == nil {
+			s.BackupGW = gw
+		}
+	}
 	if s.BackupGW == "" || s.BackupInterface == "" {
 		return errors.New("backup gateway or interface is not configured")
 	}
@@ -119,6 +125,12 @@ func (s *Switcher) SwitchToBackup() error {
 }
 
 func (s *Switcher) SwitchToPrimary() error {
+	if s.PrimaryGW == "" {
+		gw, err := detectGatewayRobust(s.PrimaryInterface)
+		if err == nil {
+			s.PrimaryGW = gw
+		}
+	}
 	if s.PrimaryGW == "" || s.PrimaryInterface == "" {
 		return errors.New("primary gateway or interface is not configured")
 	}
@@ -126,7 +138,7 @@ func (s *Switcher) SwitchToPrimary() error {
 }
 
 func (s *Switcher) changeDefaultGateway(gw string, iface string) error {
-	cmd := exec.Command("sudo", "ip", "route", "change", "default", "via", gw, "dev", iface)
+	cmd := exec.Command("sudo", "ip", "route", "replace", "default", "via", gw, "dev", iface)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

@@ -63,7 +63,15 @@ func (pm *PingMonitor) RunOnce() {
 		if ip, err := getInterfaceIP(pm.ifaceName); err == nil {
 			pinger.Source = ip
 		} else {
-			log.Printf("Ping warning: failed to bind to interface %s: %v", pm.ifaceName, err)
+			log.Printf("Ping error: failed to bind to interface %s: %v", pm.ifaceName, err)
+			pm.mutex.Lock()
+			pm.metrics = PingMetrics{
+				AvgLatencyMs: 0,
+				PacketLoss:   100,
+				JitterMs:     0,
+			}
+			pm.mutex.Unlock()
+			return
 		}
 	}
 
